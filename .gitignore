@@ -1,4 +1,14 @@
+# Ambientes
 .venv/
 venv/
-*.csv
+__pycache__/
+.ipynb_checkpoints/
+
+# Dados e modelos treinados
 data/
+artifacts/
+*.csv
+*.pt
+
+# Sistema
+.DS_Store
