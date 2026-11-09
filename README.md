@@ -1,87 +1,87 @@
-# Classificação de Séries Temporais para Detecção de Falhas
+# Time Series Classification for Fault Detection
 
-Este projeto reúne um pipeline completo para **detectar falhas em equipamentos a partir de dados de sensores**. A ideia é olhar para trechos curtos das séries temporais (por exemplo, a última hora de pressão, vazão, temperatura, vibração...) e decidir se aquele trecho corresponde a uma **operação normal** ou a um **período de falha**.
+This project provides a complete pipeline to **detect equipment faults from sensor data**. The idea is to look at short stretches of the time series (for example, the last hour of pressure, flow, temperature, vibration...) and decide whether that stretch corresponds to **normal operation** or to a **fault period**.
 
-Em vez de apostar em um único algoritmo, o repositório implementa e compara três famílias de modelos, todas usando os mesmos dados de treino e teste:
+Instead of betting on a single algorithm, the repository implements and compares three model families, all using the same training and test data:
 
-| Abordagem | Modelos | Ideia |
+| Approach | Models | Idea |
 |---|---|---|
-| Features estatísticas + ML clássico | Random Forest, XGBoost, kNN | Resume cada janela em estatísticas (média, desvio, quantis, autocorrelação...) e usa classificadores tabulares. Fácil de interpretar com SHAP. |
-| Kernels aleatórios | ROCKET, MiniROCKET | Aplica milhares de convoluções aleatórias e treina um classificador linear sobre o resultado. Rápido e muito competitivo. |
-| Deep learning (PyTorch) | CNN 1D, InceptionTime, ResNet 1D, ResNet 2D | Redes neurais que aprendem as features diretamente da janela. |
+| Statistical features + classic ML | Random Forest, XGBoost, kNN | Summarizes each window into statistics (mean, standard deviation, quantiles, autocorrelation...) and uses tabular classifiers. Easy to interpret with SHAP. |
+| Random kernels | ROCKET, MiniROCKET | Applies thousands of random convolutions and trains a linear classifier on the result. Fast and very competitive. |
+| Deep learning (PyTorch) | 1D CNN, InceptionTime, 1D ResNet, 2D ResNet | Neural networks that learn the features directly from the window. |
 
-Tudo é demonstrado em **um único notebook template**, que roda imediatamente com um **dataset sintético** e pode ser adaptado aos seus dados mudando apenas uma célula de configuração.
+Everything is demonstrated in **a single template notebook**, which runs out of the box on a **synthetic dataset** and can be adapted to your data by changing just one configuration cell.
 
-## Como funciona
+## How it works
 
 ```
- CSV de sensores ──► remove períodos com     ──► rotula períodos ──► divide treino/teste
- (1 coluna por        o equipamento desligado      de falha            pela data
-  variável)           e transitórios
+ Sensor CSV       ──► remove periods with      ──► label fault ──► split train/test
+ (1 column per         the equipment off and        periods          by date
+  variable)            transients
 
-                                ┌─► features estatísticas ─► RF / XGBoost / kNN
- janelas deslizantes ───────────┼─► ROCKET / MiniROCKET ───► RidgeClassifierCV      ──► comparação
- (ex.: 60 min, passo 30 min)    └─► janela normalizada ────► CNN / InceptionTime /      no teste
-                                                             ResNet (PyTorch)
+                                ┌─► statistical features ─► RF / XGBoost / kNN
+ sliding windows ───────────────┼─► ROCKET / MiniROCKET ──► RidgeClassifierCV      ──► comparison
+ (e.g. 60 min, 30 min step)     └─► normalized window ────► CNN / InceptionTime /      on the test set
+                                                            ResNet (PyTorch)
 ```
 
-1. **Pré-processamento.** Períodos em que o equipamento está desligado (por exemplo, corrente do motor abaixo de um limite), junto com alguns minutos antes e depois (partida e parada), são removidos: eles não representam nem operação normal nem falha.
-2. **Rotulagem.** Você informa uma lista de períodos `(início, fim)` em que houve falha; cada amostra dentro desses períodos recebe o rótulo `1`.
-3. **Divisão temporal.** O treino usa o passado e o teste usa o futuro, como aconteceria em produção. Uma divisão aleatória colocaria janelas quase idênticas nos dois conjuntos e mostraria um desempenho irrealmente alto.
-4. **Janelamento.** A série é cortada em janelas sobrepostas. Cada janela é um exemplo de classificação e é rotulada como falha quando mais da metade das suas amostras é falha. Janelas que atravessam lacunas no tempo (trechos removidos) são descartadas.
-5. **Modelagem e avaliação.** As três abordagens são treinadas e avaliadas nas mesmas janelas de teste.
+1. **Preprocessing.** Periods when the equipment is off (for example, motor current below a threshold), together with a few minutes before and after (start-up and shutdown), are removed: they represent neither normal operation nor a fault.
+2. **Labeling.** You provide a list of `(start, end)` periods when a fault happened; every sample inside those periods gets label `1`.
+3. **Temporal split.** Training uses the past and testing uses the future, as would happen in production. A random split would put nearly identical windows in both sets and show unrealistically high performance.
+4. **Windowing.** The series is cut into overlapping windows. Each window is one classification example and is labeled as a fault when more than half of its samples are faults. Windows that cross time gaps (removed stretches) are discarded.
+5. **Modeling and evaluation.** The three approaches are trained and evaluated on the same test windows.
 
-### Sobre as métricas
+### About the metrics
 
-Falhas costumam ser raras: em um teste com 1% de janelas de falha, um modelo que **nunca** detecta falha tem 99% de acurácia. Por isso o projeto reporta métricas da classe de falha (**precision**, **recall** e **F1**), a **acurácia balanceada** e métricas de ranqueamento (**ROC AUC** e **PR AUC**). A PR AUC é a mais informativa quando as classes são muito desbalanceadas.
+Faults are usually rare: on a test set with 1% fault windows, a model that **never** detects a fault has 99% accuracy. That is why the project reports metrics for the fault class (**precision**, **recall** and **F1**), **balanced accuracy** and ranking metrics (**ROC AUC** and **PR AUC**). PR AUC is the most informative when the classes are highly imbalanced.
 
-## Estrutura do repositório
+## Repository structure
 
 ```
 .
 ├── notebooks/
-│   └── tsc_template.ipynb   # notebook de exemplo: o pipeline completo, do CSV à comparação
-├── tsc/                     # código reutilizável importado pelo notebook
-│   ├── data.py              # leitura do CSV, remoção de períodos desligado, rotulagem, dados sintéticos
-│   ├── windowing.py         # janelas deslizantes, divisão treino/validação, normalização
-│   ├── features.py          # features estatísticas por janela
-│   ├── models.py            # arquiteturas PyTorch (CNN1D, InceptionTime, ResNet1D, ResNet2D)
-│   ├── training.py          # loop de treino (focal loss, AdamW, checkpoint do melhor modelo)
-│   └── evaluation.py        # métricas e gráficos
-├── pyproject.toml           # dependências
+│   └── tsc_template.ipynb   # example notebook: the full pipeline, from CSV to comparison
+├── tsc/                     # reusable code imported by the notebook
+│   ├── data.py              # CSV loading, removal of off periods, labeling, synthetic data
+│   ├── windowing.py         # sliding windows, train/validation split, normalization
+│   ├── features.py          # per-window statistical features
+│   ├── models.py            # PyTorch architectures (CNN1D, InceptionTime, ResNet1D, ResNet2D)
+│   ├── training.py          # training loop (focal loss, AdamW, best-model checkpoint)
+│   └── evaluation.py        # metrics and plots
+├── pyproject.toml           # dependencies
 └── uv.lock
 ```
 
-## Instalação
+## Installation
 
-O projeto usa Python 3.12 e o gerenciador [uv](https://docs.astral.sh/uv/):
+The project uses Python 3.12 and the [uv](https://docs.astral.sh/uv/) package manager:
 
 ```bash
-git clone <url-deste-repositorio>
+git clone <this-repository-url>
 cd timeseries-classification
 uv sync
 ```
 
-O `uv sync` cria o ambiente virtual em `.venv/`, instala as dependências (PyTorch, scikit-learn, sktime, XGBoost, SHAP...) e instala o pacote `tsc` em modo editável.
+`uv sync` creates the virtual environment in `.venv/`, installs the dependencies (PyTorch, scikit-learn, sktime, XGBoost, SHAP...) and installs the `tsc` package in editable mode.
 
-Sem o uv, também é possível usar pip:
+Without uv, you can also use pip:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e . ipykernel nbformat
 ```
 
-O treino das redes usa automaticamente GPU NVIDIA (CUDA) ou Apple Silicon (MPS) quando disponíveis, e CPU caso contrário.
+Network training automatically uses an NVIDIA GPU (CUDA) or Apple Silicon (MPS) when available, and the CPU otherwise.
 
-## Como usar
+## How to use
 
-### 1. Rodar o exemplo com dados sintéticos
+### 1. Run the example with synthetic data
 
-Abra `notebooks/tsc_template.ipynb` no Jupyter ou no VS Code, selecione o kernel do `.venv` e execute todas as células. Com `USE_SYNTHETIC_DATA = True` (o padrão), o notebook gera 90 dias de dados de seis sensores com paradas do equipamento e falhas simuladas, e roda o pipeline inteiro em poucos minutos.
+Open `notebooks/tsc_template.ipynb` in Jupyter or VS Code, select the `.venv` kernel and run all cells. With `USE_SYNTHETIC_DATA = True` (the default), the notebook generates 90 days of data from six sensors with equipment stops and simulated faults, and runs the whole pipeline in a few minutes.
 
-### 2. Usar com os seus dados
+### 2. Use it with your own data
 
-Coloque seu arquivo em `data/` (essa pasta é ignorada pelo git) no formato abaixo: separador `;`, uma coluna de timestamp e uma coluna numérica por variável.
+Put your file in `data/` (this folder is ignored by git) in the format below: `;` separator, one timestamp column and one numeric column per variable.
 
 ```
 Timestamp;corrente_motor;pressao;vazao;temperatura
@@ -90,23 +90,23 @@ Timestamp;corrente_motor;pressao;vazao;temperatura
 ...
 ```
 
-Depois, edite apenas a célula **Configuração** do notebook:
+Then edit only the notebook's **Configuração** (configuration) cell:
 
-| Parâmetro | O que define |
+| Parameter | What it sets |
 |---|---|
-| `USE_SYNTHETIC_DATA`, `DATA_PATH` | Usar dados sintéticos ou ler o seu CSV |
-| `TIMESTAMP_COL`, `DROP_COLUMNS`, `SAMPLING_FREQ` | Nome da coluna de tempo, colunas a descartar e período de amostragem |
-| `FAULT_PERIODS` | Lista de `(início, fim)` dos períodos de falha conhecidos |
-| `OFF_FILTER` | Variável e limite que indicam equipamento desligado, e quantos minutos cortar antes/depois (`None` desativa) |
-| `TRAIN_PERIOD`, `TEST_PERIOD` | Intervalos de datas de treino e de teste |
-| `WINDOW_SIZE`, `STEP` | Tamanho das janelas e o passo entre elas (em amostras) |
-| `DL_MODELS`, `EPOCHS`, `BATCH_SIZE`, `VAL_FRACTION` | Quais redes treinar e como |
+| `USE_SYNTHETIC_DATA`, `DATA_PATH` | Use synthetic data or read your CSV |
+| `TIMESTAMP_COL`, `DROP_COLUMNS`, `SAMPLING_FREQ` | Name of the time column, columns to drop and sampling period |
+| `FAULT_PERIODS` | List of `(start, end)` of the known fault periods |
+| `OFF_FILTER` | Variable and threshold that indicate the equipment is off, and how many minutes to cut before/after (`None` disables it) |
+| `TRAIN_PERIOD`, `TEST_PERIOD` | Training and test date ranges |
+| `WINDOW_SIZE`, `STEP` | Window size and the step between windows (in samples) |
+| `DL_MODELS`, `EPOCHS`, `BATCH_SIZE`, `VAL_FRACTION` | Which networks to train and how |
 
-Os pesos do melhor modelo de cada rede são salvos em `artifacts/`.
+The weights of each network's best model are saved in `artifacts/`.
 
-### 3. Usar o pacote fora do notebook
+### 3. Use the package outside the notebook
 
-As funções do pacote `tsc` também podem ser usadas em scripts:
+The functions of the `tsc` package can also be used in scripts:
 
 ```python
 from tsc.data import make_synthetic_dataset, remove_off_periods, label_periods, select_period
@@ -132,19 +132,19 @@ result = train_model(
 probabilities = predict_proba(result.best_model, scale_windows(scaler, X_val))
 ```
 
-## Tecnologias
+## Technologies
 
-- [PyTorch](https://pytorch.org/): redes neurais
-- [scikit-learn](https://scikit-learn.org/) e [XGBoost](https://xgboost.readthedocs.io/): modelos clássicos e métricas
-- [sktime](https://www.sktime.net/): ROCKET e MiniROCKET
-- [SHAP](https://shap.readthedocs.io/): interpretação dos modelos baseados em árvores
-- [pandas](https://pandas.pydata.org/), [NumPy](https://numpy.org/) e [SciPy](https://scipy.org/): manipulação de dados e estatísticas
-- [Plotly](https://plotly.com/python/) e [Matplotlib](https://matplotlib.org/): visualização
+- [PyTorch](https://pytorch.org/): neural networks
+- [scikit-learn](https://scikit-learn.org/) and [XGBoost](https://xgboost.readthedocs.io/): classic models and metrics
+- [sktime](https://www.sktime.net/): ROCKET and MiniROCKET
+- [SHAP](https://shap.readthedocs.io/): interpretation of the tree-based models
+- [pandas](https://pandas.pydata.org/), [NumPy](https://numpy.org/) and [SciPy](https://scipy.org/): data handling and statistics
+- [Plotly](https://plotly.com/python/) and [Matplotlib](https://matplotlib.org/): visualization
 
-## Referências
+## References
 
-- Dempster, Petitjean e Webb. *ROCKET: Exceptionally fast and accurate time series classification using random convolutional kernels* (2020).
-- Dempster, Schmidt e Webb. *MiniRocket: A Very Fast (Almost) Deterministic Transform for Time Series Classification* (2021).
+- Dempster, Petitjean and Webb. *ROCKET: Exceptionally fast and accurate time series classification using random convolutional kernels* (2020).
+- Dempster, Schmidt and Webb. *MiniRocket: A Very Fast (Almost) Deterministic Transform for Time Series Classification* (2021).
 - Ismail Fawaz et al. *InceptionTime: Finding AlexNet for Time Series Classification* (2020).
-- Wang, Yan e Oates. *Time Series Classification from Scratch with Deep Neural Networks: A Strong Baseline* (2017).
+- Wang, Yan and Oates. *Time Series Classification from Scratch with Deep Neural Networks: A Strong Baseline* (2017).
 - Lin et al. *Focal Loss for Dense Object Detection* (2017).
